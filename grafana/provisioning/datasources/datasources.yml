@@ -1,0 +1,28 @@
+apiVersion: 1
+datasources:
+  - name: InfluxDB-Ingenio
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    isDefault: true
+    jsonData:
+      version: Flux
+      organization: agrosensor
+      defaultBucket: sensores
+    secureJsonData:
+      token: "${INFLUXDB_TOKEN}"
+    editable: true
+  - name: OpenRemote-API
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    jsonData:
+      auth_method: bearerToken
+      url: http://openremote-manager:8080
+    editable: true
+  - name: EMQX-Metrics
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    jsonData:
+      auth_method: basicAuth
+      url: http://emqx:18083
+    editable: true

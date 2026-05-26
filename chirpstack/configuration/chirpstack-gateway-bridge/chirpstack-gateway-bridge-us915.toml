@@ -1,0 +1,32 @@
+# =============================================================================
+# ChirpStack Gateway Bridge v4 — US915
+# Recibe paquetes UDP del packet_forwarder (lora_pkt_fwd)
+# Los convierte y publica en EMQX
+#
+# El WM1302 corre lora_pkt_fwd que envía a localhost:1700
+# Este bridge escucha en :1700 UDP y publica en EMQX
+# =============================================================================
+
+[backend]
+  type = "semtech_udp"
+
+  [backend.semtech_udp]
+    udp_bind = "0.0.0.0:1700"
+
+[integration]
+  marshaler = "json"
+
+  [integration.mqtt]
+    # EMQX como broker — mismo que usa todo el stack
+    event_topic_template = "us915_0/gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+    state_topic_template = "us915_0/gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+    command_topic_template = "us915_0/gateway/{{ .GatewayID }}/command/#"
+
+    [integration.mqtt.auth]
+      type = "generic"
+
+      [integration.mqtt.auth.generic]
+        servers = ["tcp://emqx:1883"]
+        # EMQX es anónimo en el MVP
+        username = ""
+        password = ""

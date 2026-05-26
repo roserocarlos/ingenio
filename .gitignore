@@ -1,0 +1,19 @@
+# Credenciales — NUNCA al repo
+.env
+
+# Datos de contenedores
+emqx/
+influxdb/
+nodered/data/
+openremote/data/
+grafana/data/
+chirpstack/data/
+portainer_data/
+caddy/data/
+caddy/config/
+
+# Temporales
+*.log
+__pycache__/
+*.tar.gz
+*.tar

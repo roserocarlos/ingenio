@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ingenio+ | Mi Finca</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;0,9..144,700;1,9..144,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+:root{
+  --c1:#1F5F66;--c2:#E8742A;--c3:#214F57;--c4:#1FA187;--c5:#27B1A0;
+  --c6:#D83C7C;--c7:#E33C84;--c8:#F4D74E;
+  --dark:#0F2028;--dark2:#162A34;--bg:#F5F2EC;--surf:#FFFFFF;--surf2:#EEF7F5;
+  --ink:#0F2028;--muted:#4A6870;--faint:#90AEB8;--on-dark:#E8F0F2;--muted-dark:#7AACB6;
+  --line:rgba(15,32,40,.1);--f-d:'Fraunces',Georgia,serif;--f-b:'DM Sans',system-ui,sans-serif;
+  --r12:12px;--r16:16px;--r20:20px;--pill:999px;--sh:0 8px 28px rgba(15,32,40,.11);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--f-b);font-weight:300;background:var(--bg);color:var(--ink);overflow:hidden}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+@keyframes loadprogress{from{width:0}to{width:100%}}
+
+/* TOPBAR */
+.topbar{height:60px;background:var(--dark2);display:flex;align-items:center;justify-content:space-between;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0}
+.logo{font-family:var(--f-d);font-size:28px;font-weight:900;letter-spacing:-1px;display:flex;user-select:none}
+/* Paleta exacta del landing ingenio.plus */
+.logo span:nth-child(1){color:#1F5F66}
+.logo span:nth-child(2){color:#E8742A}
+.logo span:nth-child(3){color:#214F57}
+.logo span:nth-child(4){color:#1FA187}
+.logo span:nth-child(5){color:#27B1A0}
+.logo span:nth-child(6){color:#D83C7C}
+.logo span:nth-child(7){color:#E33C84}
+.logo span:nth-child(8){color:#F4D74E}
+.farm-name{font-family:var(--f-d);font-style:italic;font-size:15px;color:var(--muted-dark)}
+.top-r{display:flex;align-items:center;gap:12px}
+.source-badge{font-size:10px;padding:3px 8px;border-radius:var(--pill);background:rgba(255,255,255,.08);color:var(--muted-dark);transition:all .3s}
+.source-badge.live{background:rgba(31,161,135,.25);color:var(--c5)}
+.conn-badge{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted-dark)}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;transition:background .3s}
+.conn-dot.on{background:#22c55e;animation:blink 2.5s infinite}
+
+/* LAYOUT */
+.app{display:flex;height:calc(100vh - 60px)}
+.sidebar{width:300px;flex-shrink:0;background:var(--surf);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.map-area{flex:1;position:relative}
+#map{width:100%;height:100%}
+
+/* SIDEBAR NAV */
+.snav{display:flex;border-bottom:2px solid var(--line)}
+.snav-btn{flex:1;padding:12px 4px;border:none;background:none;font-family:var(--f-b);font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.snav-btn.active{color:var(--c3);border-bottom-color:var(--c4)}
+.spanel{flex:1;overflow-y:auto;padding:10px}
+.spanel::-webkit-scrollbar{width:3px}
+.spanel::-webkit-scrollbar-thumb{background:var(--c5);border-radius:9px}
+
+/* SENSOR CARDS */
+.sensor-card{background:var(--bg);border:1.5px solid var(--line);border-radius:var(--r16);padding:12px;margin-bottom:8px;cursor:pointer;transition:all .2s}
+.sensor-card:hover{border-color:var(--c5);transform:translateX(2px)}
+.sensor-card.active{border-color:var(--c4);background:var(--surf2)}
+.sc-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sc-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.st-online{background:#22c55e;animation:pulse 2s infinite}
+.st-degraded{background:var(--c8);animation:blink 1.5s infinite}
+.st-offline{background:#ef4444}
+.sc-name{font-family:var(--f-d);font-size:14px;font-weight:600;color:var(--ink);flex:1;line-height:1.2}
+.sc-time{font-size:10px;color:var(--faint);white-space:nowrap}
+.kpi-mini{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.km{background:#fff;border-radius:8px;padding:7px 9px;border:1px solid var(--line)}
+.km-v{font-family:var(--f-d);font-size:16px;font-weight:700;line-height:1;color:var(--c4)}
+.km-l{font-size:10px;color:var(--muted);margin-top:2px}
+.bat-row{display:flex;align-items:center;gap:6px;margin-top:7px}
+.bat-bar{flex:1;height:4px;background:var(--line);border-radius:var(--pill);overflow:hidden}
+.bat-fill{height:100%;border-radius:var(--pill);background:linear-gradient(90deg,var(--c4),var(--c5))}
+.bat-val{font-size:10px;color:var(--muted)}
+
+/* ALERTAS */
+.alert-item{display:flex;align-items:flex-start;gap:8px;background:var(--bg);border-radius:var(--r12);padding:9px 11px;margin-bottom:6px;border-left:3px solid var(--line)}
+.alert-item.ok{border-left-color:#22c55e}
+.alert-item.warn{border-left-color:var(--c8)}
+.alert-item.crit{border-left-color:#ef4444}
+.al-ico{font-size:15px;flex-shrink:0}
+.al-msg{font-size:12px;color:var(--ink);line-height:1.4}
+.al-time{font-size:10px;color:var(--faint);margin-top:2px}
+
+/* DETAIL PANEL */
+.detail-panel{position:absolute;top:14px;right:14px;width:290px;background:var(--surf);border-radius:var(--r20);box-shadow:var(--sh);border:1.5px solid var(--line);z-index:1000;max-height:calc(100vh - 100px);overflow-y:auto;display:none}
+.detail-panel.show{display:block;animation:fadeUp .3s both}
+.dp-header{background:var(--dark2);border-radius:var(--r20) var(--r20) 0 0;padding:14px 16px}
+.dp-close{float:right;background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:50%;width:22px;height:22px;font-size:13px;cursor:pointer;line-height:22px;text-align:center;transition:background .15s}
+.dp-close:hover{background:rgba(255,255,255,.2)}
+.dp-name{font-family:var(--f-d);font-size:16px;font-weight:700;color:#fff;margin-bottom:2px}
+.dp-loc{font-size:11px;color:var(--muted-dark)}
+.dp-body{padding:14px}
+.dp-kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px}
+.dp-kpi{background:var(--bg);border-radius:var(--r12);padding:10px;border:1px solid var(--line)}
+.dp-val{font-family:var(--f-d);font-size:20px;font-weight:700;color:var(--c4);line-height:1;margin-bottom:2px}
+.dp-lbl{font-size:10px;color:var(--muted)}
+.dp-rec{background:rgba(31,161,135,.08);border:1.5px solid rgba(31,161,135,.2);border-radius:var(--r12);padding:10px 12px;margin-bottom:12px}
+.dp-rec-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--c4);margin-bottom:4px}
+.dp-rec-txt{font-size:13px;color:var(--ink);line-height:1.5}
+.chart-wrap{height:110px;margin-bottom:12px}
+.dp-hw{display:flex;gap:6px;flex-wrap:wrap}
+.hw-tag{background:var(--bg);border:1px solid var(--line);border-radius:var(--pill);padding:2px 8px;font-size:10px;color:var(--muted)}
+
+/* BOTTOM BAR */
+.bottom-bar{position:absolute;bottom:0;left:0;right:0;background:rgba(15,32,40,.88);backdrop-filter:blur(12px);padding:9px 14px;display:flex;align-items:center;gap:12px;border-top:1px solid rgba(255,255,255,.08);z-index:999}
+.bb-stat{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--on-dark)}
+.bb-dot{width:7px;height:7px;border-radius:50%}
+.bb-spacer{flex:1}
+.bb-ts{font-size:10px;color:var(--muted-dark)}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:var(--dark2);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s}
+.loading-overlay.hidden{opacity:0;pointer-events:none}
+.loading-logo{font-family:var(--f-d);font-size:52px;font-weight:900;letter-spacing:-2px;margin-bottom:14px;display:flex}
+.loading-logo span:nth-child(1){color:#1F5F66}
+.loading-logo span:nth-child(2){color:#E8742A}
+.loading-logo span:nth-child(3){color:#214F57}
+.loading-logo span:nth-child(4){color:#1FA187}
+.loading-logo span:nth-child(5){color:#27B1A0}
+.loading-logo span:nth-child(6){color:#D83C7C}
+.loading-logo span:nth-child(7){color:#E33C84}
+.loading-logo span:nth-child(8){color:#F4D74E}
+.loading-msg{font-size:13px;color:var(--muted-dark)}
+.loading-bar{width:200px;height:3px;background:rgba(255,255,255,.1);border-radius:var(--pill);margin-top:18px;overflow:hidden}
+.loading-fill{height:100%;background:var(--c4);border-radius:var(--pill);animation:loadprogress 2.5s ease-in-out forwards}
+
+@media(max-width:768px){
+  .sidebar{width:100%;height:260px;flex-shrink:0}
+  .app{flex-direction:column}
+  .detail-panel{width:calc(100vw - 28px);right:14px}
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loadOverlay">
+  <div class="loading-logo"><span>i</span><span>n</span><span>g</span><span>e</span><span>n</span><span>i</span><span>o</span><span>+</span></div>
+  <div class="loading-msg" id="loadMsg">Conectando al sistema...</div>
+  <div class="loading-bar"><div class="loading-fill"></div></div>
+</div>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="logo"><span>i</span><span>n</span><span>g</span><span>e</span><span>n</span><span>i</span><span>o</span><span>+</span></div>
+  <div class="farm-name" id="farmName">Cargando...</div>
+  <div class="top-r">
+    <span class="source-badge" id="srcBadge">demo</span>
+    <div class="conn-badge">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connTxt">MQTT</span>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div class="app">
+  <div class="sidebar">
+    <div class="snav">
+      <button class="snav-btn active" onclick="showPanel('sensores',this)">📡 Sensores</button>
+      <button class="snav-btn" onclick="showPanel('alertas',this)">🔔 Alertas</button>
+    </div>
+    <div class="spanel" id="panel-sensores">
+      <div id="sensorList" style="text-align:center;padding:32px 16px;color:var(--faint)">
+        <div style="font-size:28px;margin-bottom:10px">📡</div>
+        <div style="font-size:13px">Cargando sensores...</div>
+      </div>
+    </div>
+    <div class="spanel" id="panel-alertas" style="display:none">
+      <div id="alertList"></div>
+    </div>
+  </div>
+
+  <div class="map-area">
+    <div id="map"></div>
+
+    <div class="detail-panel" id="detailPanel">
+      <div class="dp-header">
+        <button class="dp-close" onclick="closeDetail()">×</button>
+        <div class="dp-name" id="dpName">Sensor</div>
+        <div class="dp-loc" id="dpLoc"></div>
+      </div>
+      <div class="dp-body" id="dpBody">
+        <div style="text-align:center;padding:20px;color:var(--faint);font-size:12px">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="bb-stat"><div class="bb-dot" style="background:#22c55e"></div><span id="bbOn">0 en línea</span></div>
+      <div class="bb-stat"><div class="bb-dot" style="background:var(--c8)"></div><span id="bbDeg">0 degradados</span></div>
+      <div class="bb-stat"><div class="bb-dot" style="background:#ef4444"></div><span id="bbOff">0 sin señal</span></div>
+      <div class="bb-spacer"></div>
+      <div class="bb-ts" id="bbTs">--:--</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// Ingenio+ Portal v11 — Rutas correctas y limpias
+//
+// Proxies Nginx (puerto 8087):
+//   /api/auth/  → openremote-keycloak:8080/auth/
+//   /api/or/    → openremote-manager:8080/
+//   /api/historial → influxdb:8086/api/v2/query
+//
+// MQTT tiempo real: ws://host:8083/mqtt
+// =============================================================================
+
+const REALM   = new URLSearchParams(location.search).get('realm') || 'master';
+const OR_PASS = new URLSearchParams(location.search).get('pass')  || 'linuxxl2';
+const MQ_URL  = `ws://${location.hostname}:8083/mqtt`;
+
+// Rutas — todas via proxy Nginx, sin duplicaciones
+const AUTH_TOKEN_URL = `/api/auth/realms/${REALM}/protocol/openid-connect/token`;
+const OR_ASSET_QUERY = `/api/or/api/${REALM}/asset/query`;
+const OR_ASSET_BASE  = `/api/or/api/${REALM}/asset`;
+const INFLUX_URL     = `/api/historial?org=agrosensor`;
+
+let sensors   = {};
+let orToken   = null;
+let mqClient  = null;
+let histChart = null;
+let activeNode= null;
+let dataSource= 'demo';
+
+// ── Mapa ──────────────────────────────────────────────────────────────────────
+const map = L.map('map', {center:[1.2136,-77.2790], zoom:14});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap', maxZoom:19
+}).addTo(map);
+
+// ── OpenRemote Auth ───────────────────────────────────────────────────────────
+async function getToken() {
+  try {
+    const r = await fetch(AUTH_TOKEN_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
+      body: `grant_type=password&client_id=openremote&username=admin&password=${OR_PASS}`
+    });
+    if (!r.ok) return null;
+    const d = await r.json();
+    orToken = d.access_token;
+    return orToken;
+  } catch(e) {
+    console.warn('Token error:', e);
+    return null;
+  }
+}
+
+async function orFetch(url, opts={}) {
+  if (!orToken) await getToken();
+  if (!orToken) return null;
+  try {
+    const r = await fetch(url, {
+      ...opts,
+      headers: {
+        'Authorization': `Bearer ${orToken}`,
+        'Content-Type': 'application/json',
+        ...(opts.headers||{})
+      }
+    });
+    if (r.status === 401) { orToken = null; return null; }
+    if (!r.ok) return null;
+    const txt = await r.text();
+    return txt ? JSON.parse(txt) : null;
+  } catch(e) {
+    console.warn('OR fetch error:', e);
+    return null;
+  }
+}
+
+// ── Cargar assets ─────────────────────────────────────────────────────────────
+async function loadAssets() {
+  setMsg('Conectando a OpenRemote...');
+
+  const token = await getToken();
+  if (!token) {
+    setMsg('OpenRemote no disponible — modo demo');
+    setTimeout(() => { loadDemo(); hideLoad(); }, 1200);
+    return;
+  }
+
+  setMsg('Cargando sensores...');
+
+  // Query assets — POST /api/or/api/{realm}/asset/query
+  let assets = await orFetch(OR_ASSET_QUERY, {
+    method: 'POST',
+    body: JSON.stringify({types:['SoilSensorAsset'], recursive:true})
+  });
+
+  // Fallback — todos los assets no-agente
+  if (!assets || !assets.length) {
+    assets = await orFetch(OR_ASSET_QUERY, {
+      method: 'POST',
+      body: JSON.stringify({recursive:true})
+    });
+    if (assets) assets = assets.filter(a =>
+      a.type && !a.type.includes('Agent') && a.type !== 'GroupAsset'
+    );
+  }
+
+  if (!assets || !assets.length) {
+    setMsg('Sin sensores — modo demo');
+    setTimeout(() => { loadDemo(); hideLoad(); }, 1200);
+    return;
+  }
+
+  dataSource = 'openremote';
+  document.getElementById('srcBadge').textContent = 'OpenRemote';
+  document.getElementById('srcBadge').classList.add('live');
+  document.getElementById('farmName').textContent = REALM !== 'master' ? REALM : 'Mi Finca';
+
+  assets.forEach(a => {
+    const attr = a.attributes || {};
+    const v    = n => attr[n]?.value ?? null;
+    const loc  = v('location');
+    addSensor({
+      id:            a.id,
+      name:          a.name || 'Sensor',
+      lat:           loc?.coordinates?.[1] ?? (1.2136 + Math.random()*.01),
+      lng:           loc?.coordinates?.[0] ?? (-77.279 + Math.random()*.01),
+      status:        v('status') || 'ONLINE',
+      soil_moisture: v('soilMoisture') ?? v('salinity') ?? 0,
+      temperature:   v('temperature') ?? 0,
+      ph:            v('pH') ?? 0,
+      battery:       v('battery') ?? 0,
+      rssi:          v('rssi') ?? 0,
+      recommendation: v('recommendation') || 'Condiciones normales.',
+      lastSeen:      Date.now(),
+      orId:          a.id,
+    });
+  });
+
+  addAlert('ok', `✅ Conectado — ${assets.length} sensor(es) cargados`);
+  hideLoad();
+}
+
+// ── Demo fallback ─────────────────────────────────────────────────────────────
+function loadDemo() {
+  dataSource = 'demo';
+  document.getElementById('farmName').textContent = 'Finca La Esperanza (demo)';
+  [
+    {id:'s001',name:'Sensor Norte Lote 1',lat:1.2145,lng:-77.2795,status:'ONLINE',soil_moisture:68,temperature:22.4,ph:6.8,battery:87,rssi:-72,recommendation:'✅ Condiciones normales. Próximo riego en 2 días.'},
+    {id:'s002',name:'Sensor Sur Invernadero',lat:1.2128,lng:-77.2785,status:'ONLINE',soil_moisture:42,temperature:24.1,ph:6.5,battery:64,rssi:-81,recommendation:'💧 Humedad baja. Riego recomendado hoy.'},
+    {id:'s003',name:'Sensor Zona Cafetera',lat:1.2138,lng:-77.2810,status:'DEGRADED',soil_moisture:31,temperature:19.8,ph:5.9,battery:28,rssi:-94,recommendation:'⚠️ Batería crítica y humedad baja. Revisión urgente.'},
+  ].forEach(addSensor);
+  addAlert('warn','⚠️ Modo demo — OpenRemote no disponible');
+}
+
+// ── Sensor al mapa ────────────────────────────────────────────────────────────
+function addSensor(s) {
+  sensors[s.id] = {...(sensors[s.id]||{}), ...s};
+  const col = {ONLINE:'#22c55e', DEGRADED:'#F4D74E', OFFLINE:'#ef4444'}[s.status]||'#22c55e';
+  const ico = {ONLINE:'💧', DEGRADED:'⚠️', OFFLINE:'📵'}[s.status]||'💧';
+  const icon = L.divIcon({
+    className:'',
+    html:`<div style="width:34px;height:34px;border-radius:50%;background:${col};border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer" onclick="selectSensor('${s.id}')">${ico}</div>`,
+    iconSize:[34,34], iconAnchor:[17,17]
+  });
+  if (sensors[s.id].marker) map.removeLayer(sensors[s.id].marker);
+  sensors[s.id].marker = L.marker([s.lat,s.lng],{icon})
+    .addTo(map)
+    .bindTooltip(s.name,{permanent:false,direction:'top'});
+  renderList();
+  updateBar();
+}
+
+// ── Lista lateral ─────────────────────────────────────────────────────────────
+function renderList() {
+  const arr = Object.values(sensors);
+  if (!arr.length) return;
+  document.getElementById('sensorList').innerHTML = arr.map(s=>`
+    <div class="sensor-card${activeNode===s.id?' active':''}" onclick="selectSensor('${s.id}')">
+      <div class="sc-top">
+        <div class="sc-dot st-${(s.status||'ONLINE').toLowerCase()}"></div>
+        <div class="sc-name">${s.name}</div>
+        <div class="sc-time">${timeAgo(s.lastSeen||Date.now())}</div>
+      </div>
+      <div class="kpi-mini">
+        <div class="km"><div class="km-v">${fmt(s.soil_moisture,0)}%</div><div class="km-l">💧 Humedad</div></div>
+        <div class="km"><div class="km-v">${fmt(s.temperature,1)}°C</div><div class="km-l">🌡️ Temp.</div></div>
+        <div class="km"><div class="km-v">${fmt(s.ph,1)}</div><div class="km-l">⚗️ pH</div></div>
+        <div class="km"><div class="km-v" style="font-size:11px">${s.status||'—'}</div><div class="km-l">📡 Estado</div></div>
+      </div>
+      <div class="bat-row">
+        <span style="font-size:10px">🔋</span>
+        <div class="bat-bar"><div class="bat-fill" style="width:${s.battery||0}%"></div></div>
+        <span class="bat-val">${fmt(s.battery,0)}%</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Seleccionar sensor ────────────────────────────────────────────────────────
+async function selectSensor(id) {
+  activeNode = id;
+  const s = sensors[id];
+  if (!s) return;
+  map.flyTo([s.lat,s.lng],16,{duration:.8});
+  document.getElementById('dpName').textContent = s.name;
+  document.getElementById('dpLoc').textContent  = `${s.status} · ${timeAgo(s.lastSeen||Date.now())}`;
+  document.getElementById('dpBody').innerHTML   = '<div style="text-align:center;padding:20px;color:var(--faint);font-size:12px">Cargando datos...</div>';
+  document.getElementById('detailPanel').classList.add('show');
+  renderList();
+
+  // Actualizar desde OpenRemote si disponible
+  if (s.orId && dataSource === 'openremote') {
+    const fresh = await orFetch(`${OR_ASSET_BASE}/${s.orId}`);
+    if (fresh?.attributes) {
+      const a = fresh.attributes;
+      const v = n => a[n]?.value ?? s[n] ?? 0;
+      Object.assign(sensors[id], {
+        soil_moisture: v('soilMoisture') ?? v('salinity'),
+        temperature:   v('temperature'),
+        ph:            v('pH'),
+        battery:       v('battery'),
+        rssi:          v('rssi'),
+        recommendation: v('recommendation') || s.recommendation,
+      });
+    }
+  }
+
+  renderDetail(sensors[id]);
+  loadChart(id);
+}
+
+function renderDetail(s) {
+  document.getElementById('dpBody').innerHTML = `
+    <div class="dp-kpis">
+      <div class="dp-kpi"><div class="dp-val">${fmt(s.soil_moisture,0)}%</div><div class="dp-lbl">💧 Humedad suelo</div></div>
+      <div class="dp-kpi"><div class="dp-val">${fmt(s.temperature,1)}°C</div><div class="dp-lbl">🌡️ Temperatura</div></div>
+      <div class="dp-kpi"><div class="dp-val">${fmt(s.ph,1)}</div><div class="dp-lbl">⚗️ pH</div></div>
+      <div class="dp-kpi"><div class="dp-val">${fmt(s.battery,0)}%</div><div class="dp-lbl">🔋 Batería</div></div>
+    </div>
+    <div class="dp-rec">
+      <div class="dp-rec-lbl">Recomendación</div>
+      <div class="dp-rec-txt">${s.recommendation||'Condiciones normales.'}</div>
+    </div>
+    <div class="chart-wrap"><canvas id="histChart"></canvas></div>
+    <div class="dp-hw">
+      <span class="hw-tag">RSSI ${s.rssi||0} dBm</span>
+      <span class="hw-tag">${dataSource==='openremote'?'OpenRemote':'Demo'}</span>
+      <span class="hw-tag">LoRa</span>
+    </div>`;
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.remove('show');
+  activeNode = null;
+  if (histChart) { histChart.destroy(); histChart = null; }
+  renderList();
+}
+
+// ── Historial InfluxDB ────────────────────────────────────────────────────────
+async function loadChart(nodeId) {
+  const s = sensors[nodeId];
+  if (!s) return;
+  await new Promise(r=>setTimeout(r,60));
+  const canvas = document.getElementById('histChart');
+  if (!canvas) return;
+  if (histChart) { histChart.destroy(); histChart = null; }
+
+  let labels=[], data=[];
+
+  try {
+    const flux = `from(bucket:"sensores")
+  |> range(start:-24h)
+  |> filter(fn:(r) => r._measurement == "sensor_data" and r.node_id == "${nodeId}" and r._field == "soil_moisture")
+  |> aggregateWindow(every:1h, fn:mean, createEmpty:false)
+  |> yield()`;
+
+    const r = await fetch(INFLUX_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/vnd.flux'},
+      body: flux
+    });
+    if (r.ok) {
+      const csv = await r.text();
+      csv.split('\n').forEach(row => {
+        if (!row || row.startsWith('#') || row.startsWith(',result')) return;
+        const cols = row.split(',');
+        if (cols.length >= 7) {
+          const t = new Date(cols[5]);
+          const v = parseFloat(cols[6]);
+          if (!isNaN(t.getTime()) && !isNaN(v)) {
+            labels.push(`${t.getHours()}:00`);
+            data.push(+(v.toFixed(1)));
+          }
+        }
+      });
+    }
+  } catch(e) { console.warn('InfluxDB error:', e); }
+
+  // Fallback sintético
+  if (!data.length) {
+    const base = s.soil_moisture||50;
+    for (let i=23;i>=0;i--) {
+      const h = new Date(Date.now()-i*3600000);
+      labels.push(`${h.getHours()}:00`);
+      data.push(+(Math.max(10,Math.min(95,base+(Math.random()-.5)*20)).toFixed(1)));
+    }
+  }
+
+  histChart = new Chart(canvas.getContext('2d'), {
+    type:'line',
+    data:{labels, datasets:[{
+      label:'Humedad %', data,
+      borderColor:'#1FA187', backgroundColor:'rgba(31,161,135,.1)',
+      borderWidth:2, pointRadius:0, fill:true, tension:.4
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:9},maxTicksLimit:6},grid:{display:false}},
+        y:{ticks:{font:{size:9}},min:0,max:100}
+      }
+    }
+  });
+}
+
+// ── MQTT tiempo real ──────────────────────────────────────────────────────────
+function connectMQTT() {
+  try {
+    mqClient = mqtt.connect(MQ_URL, {
+      clientId:`portal_${Math.random().toString(16).slice(2)}`,
+      clean:true, reconnectPeriod:5000
+    });
+    mqClient.on('connect', ()=>{
+      document.getElementById('connDot').classList.add('on');
+      document.getElementById('connTxt').textContent = 'En línea';
+      mqClient.subscribe('ingenio/#');
+    });
+    mqClient.on('error', ()=>{
+      document.getElementById('connDot').classList.remove('on');
+      document.getElementById('connTxt').textContent = 'Sin MQTT';
+    });
+    mqClient.on('message', (topic,payload)=>{
+      try {
+        const parts = topic.split('/');
+        if (parts[3] !== 'up') return;
+        const nodeId = parts[2];
+        const data   = JSON.parse(payload.toString());
+        if (sensors[nodeId]) {
+          Object.assign(sensors[nodeId], {...data, lastSeen:Date.now(), status:'ONLINE'});
+          addSensor(sensors[nodeId]);
+          if (activeNode===nodeId) renderDetail(sensors[nodeId]);
+        }
+      } catch(e){}
+    });
+  } catch(e) {
+    document.getElementById('connTxt').textContent = 'Sin MQTT';
+  }
+}
+
+// ── Alertas ───────────────────────────────────────────────────────────────────
+function addAlert(type, msg) {
+  const list = document.getElementById('alertList');
+  const el   = document.createElement('div');
+  el.className = `alert-item ${type}`;
+  el.innerHTML = `<span class="al-ico">${type==='ok'?'✅':type==='warn'?'⚠️':'🚨'}</span>
+    <div><div class="al-msg">${msg}</div>
+    <div class="al-time">${new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div></div>`;
+  list.insertBefore(el, list.firstChild);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (v,d) => (v!=null&&!isNaN(v)) ? parseFloat(v).toFixed(d) : '—';
+
+function timeAgo(ts) {
+  const d = Date.now()-ts;
+  if (d<60000)    return 'ahora';
+  if (d<3600000)  return `${Math.floor(d/60000)}min`;
+  if (d<86400000) return `${Math.floor(d/3600000)}h`;
+  return `${Math.floor(d/86400000)}d`;
+}
+
+function updateBar() {
+  const arr = Object.values(sensors);
+  document.getElementById('bbOn').textContent  = `${arr.filter(s=>s.status==='ONLINE').length} en línea`;
+  document.getElementById('bbDeg').textContent = `${arr.filter(s=>s.status==='DEGRADED').length} degradados`;
+  document.getElementById('bbOff').textContent = `${arr.filter(s=>s.status==='OFFLINE').length} sin señal`;
+  const n=new Date();
+  document.getElementById('bbTs').textContent  = `${n.getHours()}:${String(n.getMinutes()).padStart(2,'0')}`;
+}
+
+function showPanel(id,btn) {
+  ['sensores','alertas'].forEach(p=>document.getElementById(`panel-${p}`).style.display=p===id?'':'none');
+  document.querySelectorAll('.snav-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function setMsg(m)  { document.getElementById('loadMsg').textContent=m; }
+function hideLoad() {
+  const o=document.getElementById('loadOverlay');
+  o.classList.add('hidden');
+  setTimeout(()=>o.style.display='none',600);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', ()=>{
+  connectMQTT();
+  loadAssets();
+  setInterval(updateBar,30000);
+});
+</script>
+</body>
+</html>

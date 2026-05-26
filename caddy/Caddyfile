@@ -1,0 +1,66 @@
+# =============================================================================
+# Ingenio+ — Caddyfile v11
+#
+# MODO LOCAL (activo): mDNS ingenioplus.local sin TLS
+# MODO NUBE (comentado): ingenio.plus con TLS automático via Let's Encrypt
+#
+# Para activar modo nube:
+#   1. Comentar el bloque :80
+#   2. Descomentar los bloques de dominios
+#   3. docker compose restart caddy
+# =============================================================================
+
+# ── MODO LOCAL — proxy unificado :80 ──────────────────────────────────────────
+:80 {
+    # OpenRemote Manager — ruta principal
+    @auth path /auth/*
+    handle @auth {
+        reverse_proxy openremote-keycloak:8080
+    }
+
+    # Todo lo demás → OpenRemote Manager
+    handle {
+        reverse_proxy openremote-manager:8080
+    }
+}
+
+# ── MODO NUBE (comentado — activar cuando haya dominio público) ──────────────
+# ingenio.plus, www.ingenio.plus {
+#     reverse_proxy nginx:80
+# }
+#
+# openremote.ingenio.plus {
+#     reverse_proxy openremote-manager:8080
+# }
+#
+# emqx-ws.ingenio.plus {
+#     reverse_proxy /mqtt emqx:8083 {
+#         header_up Host {upstream_hostport}
+#         header_up Connection {>Connection}
+#         header_up Upgrade {>Upgrade}
+#     }
+# }
+#
+# chirpstack.ingenio.plus {
+#     reverse_proxy chirpstack:8080
+# }
+#
+# emqx.ingenio.plus {
+#     reverse_proxy emqx:18083
+# }
+#
+# grafana.ingenio.plus {
+#     reverse_proxy grafana:3000
+# }
+#
+# nodered.ingenio.plus {
+#     reverse_proxy nodered:1880
+# }
+#
+# influx.ingenio.plus {
+#     reverse_proxy influxdb:8086
+# }
+#
+# portainer.ingenio.plus {
+#     reverse_proxy portainer:9000
+# }

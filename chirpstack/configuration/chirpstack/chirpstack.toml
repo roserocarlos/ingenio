@@ -1,0 +1,41 @@
+# =============================================================================
+# ChirpStack v4 — Configuración principal
+# Región: US915 (Colombia, 915MHz)
+# Integración: EMQX como broker MQTT (no Mosquitto interno)
+# =============================================================================
+
+[logging]
+  level = "info"
+
+[postgresql]
+  dsn = "postgres://chirpstack:chirpstack@chirpstack-postgres/chirpstack?sslmode=disable"
+
+[redis]
+  servers = ["redis://chirpstack-redis:6379"]
+
+[network]
+  net_id = "000000"
+  enabled_regions = ["us915_0"]
+
+[api]
+  bind = "0.0.0.0:8080"
+  secret = "ingenioplus-chirpstack-secret-2025"
+
+[gateway]
+  # ChirpStack recibe datos del Gateway Bridge via EMQX
+  # El Gateway Bridge escucha en UDP 1700 y publica en EMQX
+  client_cert_lifetime = "11months 30days 3h 50m 24s"
+
+[integration]
+  enabled = ["mqtt"]
+
+  [integration.mqtt]
+    # EMQX como broker — integración con el stack Ingenio+
+    # Los datos LoRaWAN llegan a EMQX y Node-RED los procesa
+    server = "tcp://emqx:1883"
+    json = true
+
+    # Topics de uplink — Node-RED suscribe a estos
+    event_topic_template = "chirpstack/application/{{ .ApplicationID }}/device/{{ .DevEUI }}/event/{{ .EventType }}"
+    state_topic_template = "chirpstack/gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+    command_topic_template = "chirpstack/gateway/{{ .GatewayID }}/command/#"
