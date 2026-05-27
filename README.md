@@ -2,30 +2,42 @@
 
 > *Para que usted sepa qué pasa en su finca, así esté lejos de ella.*
 
-Plataforma de monitoreo agrícola con LoRa 915MHz para fincas de papa, hortalizas y café
-en Boyacá y Nariño, Colombia. Sin internet en el campo — radio LoRa y LoRaWAN.
+Plataforma de monitoreo agrícola con LoRa 915MHz para fincas de papa, hortalizas
+y café en Boyacá y Nariño, Colombia. Sin internet en el campo.
 
 ---
 
-## Deploy en un comando
+## Tres planes de producto
+
+| Plan | Carpeta | Hardware | Área |
+|---|---|---|---|
+| **Cosecha** | `cosecha/` | Mini PC N2840 + WM1302 USB | 50+ ha |
+| **Raíz** | `raiz/` | Arduino UNO Q 4GB | 5–20 ha |
+| **Semilla** | `semilla/` | WiFi Relay Module ESP32 | 1–5 ha |
+
+---
+
+## Deploy Plan Cosecha (Plan 3)
 
 ```bash
-git clone https://github.com/roserocarlos/ingenio /opt/ingenioplus
-cd /opt/ingenioplus && sudo bash deploy.sh
+# Clonar solo lo necesario
+git clone --no-checkout https://github.com/roserocarlos/ingenio /opt/ingenioplus
+cd /opt/ingenioplus
+git sparse-checkout init
+git sparse-checkout set cosecha docs
+git checkout main
+
+# Desplegar
+cd cosecha && sudo bash deploy.sh
 ```
 
-Eso es todo. El script hace todo automáticamente:
-- Configura hostname → `ingenioplus`
-- Instala Docker y dependencias
-- Levanta los 14 servicios
-- Inicializa InfluxDB y Keycloak
-- Configura mDNS → `ingenioplus.local`
+O clonar todo si hay buena conexión:
+```bash
+git clone https://github.com/roserocarlos/ingenio /opt/ingenioplus
+cd /opt/ingenioplus/cosecha && sudo bash deploy.sh
+```
 
-Tiempo estimado: ~15 minutos (descarga de imágenes Docker).
-
----
-
-## Accesos tras el deploy
+### Accesos tras el deploy
 
 | Servicio | URL |
 |---|---|
@@ -37,47 +49,53 @@ Tiempo estimado: ~15 minutos (descarga de imágenes Docker).
 | Node-RED | http://ingenioplus.local:1880 |
 | Portainer | http://ingenioplus.local:9000 |
 
-Credenciales por defecto en `.env.example`.
-
-> **Windows:** agregar `192.168.x.x ingenioplus.local` en
-> `C:\Windows\System32\drivers\etc\hosts`
+Credenciales por defecto en `cosecha/.env.example`.
 
 ---
 
-## Tres planes de producto
+## Deploy Plan Raíz (Plan 2) — en desarrollo
 
-| Plan | Hardware base | Área |
-|---|---|---|
-| **Semilla** | WiFi Relay Module ESP32 + Wio-SX1262 | 1–5 ha |
-| **Raíz** | Arduino UNO Q 4GB + STM32U585 + Wio-SX1262 | 5–20 ha |
-| **Cosecha** | Mini PC N2840 + WM1302 USB LoRaWAN | 50+ ha |
-
-Este repositorio contiene el stack del **Plan Cosecha**.
-
----
-
-## Stack — 14 servicios Docker
-
-| Servicio | Puerto | Rol |
-|---|---|---|
-| EMQX 6.1.1 | 1883 / 8083 / 18083 | Broker MQTT central |
-| OpenRemote Manager | 8091 | Assets, reglas, actuadores |
-| OpenRemote Keycloak | 8093 | Autenticación OAuth2 |
-| OpenRemote PostgreSQL | — | BD OpenRemote |
-| InfluxDB v2 | 8086 | Historial series temporales |
-| Node-RED | 1880 | EMQX → InfluxDB |
-| Grafana | 3000 | Dashboard admin |
-| Nginx | 8087 | Portal cliente + proxy APIs |
-| Caddy | 80 | Proxy unificado OpenRemote |
-| Portainer | 9000 | Gestión Docker |
-| ChirpStack v4.9.0 | 8090 | LNS LoRaWAN |
-| ChirpStack Gateway Bridge | UDP:1700 | Semtech UDP → EMQX |
-| ChirpStack PostgreSQL | — | BD ChirpStack |
-| ChirpStack Redis | — | Cache ChirpStack |
+```bash
+git clone --no-checkout https://github.com/roserocarlos/ingenio
+cd ingenio
+git sparse-checkout init
+git sparse-checkout set raiz docs
+git checkout main
+cd raiz && sudo bash deploy.sh
+```
 
 ---
 
-## Gateway LoRaWAN WM1302 USB
+## Deploy Plan Semilla (Plan 1) — en desarrollo
+
+```bash
+git clone --no-checkout https://github.com/roserocarlos/ingenio
+cd ingenio
+git sparse-checkout init
+git sparse-checkout set semilla docs
+git checkout main
+# Abrir semilla/ en PlatformIO y flashear al ESP32
+```
+
+---
+
+## Estructura del repositorio
+
+```
+ingenio/
+├── cosecha/      Plan 3 — stack completo 14 servicios Docker
+├── raiz/         Plan 2 — stack ligero 5 servicios Docker
+├── semilla/      Plan 1 — firmware ESP32 embebido
+├── firmware/     Nodos y receptores LoRa (compartido)
+└── docs/         Documentación técnica y de producto
+```
+
+Ver `STRUCTURE.md` para detalle completo de carpetas.
+Ver `docs/CONTEXT.md` para contexto completo del proyecto.
+
+---
+
+## Gateway LoRaWAN WM1302 USB (Plan Cosecha)
 
 ```bash
 # Compilar sx1302_hal (una vez por servidor)
@@ -87,55 +105,10 @@ sed -i 's/TX_JIT_DELAY            40000/TX_JIT_DELAY            120000/' \
 make
 
 # Iniciar
-bash /opt/ingenioplus/scripts/setup_wm1302.sh start
-# EUI del concentrador: 0016C001F11A7BD1
+bash /opt/ingenioplus/cosecha/scripts/setup_wm1302.sh start
+# EUI: 0016C001F11A7BD1
 ```
 
 ---
 
-## Estructura del repositorio
-
-```
-ingenio/
-├── deploy.sh                 # Deploy completo en un comando ← EMPEZAR AQUÍ
-├── docker-compose.yml        # 14 servicios Docker
-├── .env.example              # Variables por defecto
-├── setup_servidor.sh         # Configuración del servidor (llamado por deploy.sh)
-├── caddy/                    # Proxy unificado :80
-├── chirpstack/               # ChirpStack v4 US915
-├── keycloak/                 # Keycloak modo local
-├── nginx/                    # Portal cliente + proxies API
-├── scripts/
-│   ├── init_influxdb.sh      # Inicialización (llamado por deploy.sh)
-│   ├── setup_keycloak_uris.sh
-│   ├── setup_wm1302.sh
-│   └── simulador_sensor.py
-├── dashboard/                # Frontend en desarrollo
-├── firmware/                 # Firmware nodos PlatformIO
-└── docs/                     # Documentación técnica
-```
-
----
-
-## Aliases en el servidor
-
-```bash
-ingenio up/down/ps    # gestionar stack
-ingenio-or/emqx/nr/influx/chirp  # logs por servicio
-ingenio-sim           # simulador sensores
-cdingenia             # ir a /opt/ingenioplus
-```
-
----
-
-## Historial
-
-| Versión | Cambios |
-|---|---|
-| v12 | Fix KC_HOSTNAME, ChirpStack 4.9.0, pg_trgm, proxy OR, Direct Access Grants, deploy.sh |
-| v11 | ChirpStack integrado, portal conectado a APIs reales |
-| v10 | OpenRemote login vía mDNS, Node-RED→InfluxDB verificado |
-
----
-
-**Ingenio+** · Ipiales, Nariño · ingenio.plus.contacto@gmail.com
+**Ingenio+** · Ipiales, Nariño, Colombia · ingenio.plus.contacto@gmail.com
