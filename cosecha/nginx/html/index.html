@@ -537,9 +537,16 @@ async function loadAssets() {
 
     // Leer atributos numéricos dinámicamente
     const numAttrs = {};
+    // Aceptar cualquier valor numérico — sin diccionario forzado
+    // OR devuelve Number, Positive integer, etc. — todos son válidos
+    const SKIP_ATTRS = ['location','notes','status','childAssetType',
+      'consolePlatform','consoleVersion','consoleName','consoleProviders',
+      'agentStatus','agentDisabled','resumeSession','secureMode','websocketMode'];
     Object.entries(attr).forEach(([name, obj]) => {
-      if (typeof obj.value === 'number' && name !== 'location') {
-        numAttrs[name] = obj.value;
+      if (obj.value !== null && obj.value !== undefined &&
+          !isNaN(parseFloat(obj.value)) && isFinite(obj.value) &&
+          !SKIP_ATTRS.includes(name)) {
+        numAttrs[name] = parseFloat(obj.value);
       }
     });
 
@@ -629,7 +636,7 @@ function addSensor(s) {
   renderList();
   updateBar();
   updateHealthScore();
-  checkAlerts(s);
+  
 }
 
 function getStatusText(s) {
@@ -775,8 +782,12 @@ async function selectSensor(id) {
     if (fresh?.attributes) {
       const attr = fresh.attributes;
       const numAttrs = {};
+      const SKIP2 = ['location','notes','status','childAssetType','consolePlatform',
+        'consoleVersion','consoleName','consoleProviders','agentStatus','agentDisabled'];
       Object.entries(attr).forEach(([name,obj]) => {
-        if (typeof obj.value==='number' && name!=='location') numAttrs[name]=obj.value;
+        if (obj.value !== null && obj.value !== undefined &&
+            !isNaN(parseFloat(obj.value)) && isFinite(obj.value) &&
+            !SKIP2.includes(name)) numAttrs[name] = parseFloat(obj.value);
       });
       Object.assign(sensors[id], {
         soil_moisture: firstVal(numAttrs, MOISTURE_ATTRS) ?? s.soil_moisture,
@@ -811,7 +822,8 @@ function renderDetail(s) {
 
   const kpisHtml = kpiEntries.map(([name, val]) => {
     const unit  = ATTR_UNITS[name] || '';
-    const label = ATTR_LABELS[name] || name;
+    // Mostrar nombre real de OpenRemote — traducción solo si existe, sino nombre tal cual
+    const label = ATTR_LABELS[name] || name.replace(/_/g,' ').replace(/([A-Z])/g,' $1').trim();
     const dec   = unit === '%' || unit === '' ? 1 : 0;
     const isMoisture = MOISTURE_ATTRS.includes(name);
     const isTemp     = TEMP_ATTRS.includes(name);
