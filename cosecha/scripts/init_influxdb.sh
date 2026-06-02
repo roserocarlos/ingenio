@@ -16,7 +16,8 @@ log()  { echo -e "${GREEN}[✓]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 err()  { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
-cd /opt/ingenioplus
+DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$DEPLOY_DIR"
 [ -f .env ] || err "No existe .env — ejecutar: cp .env.example .env"
 source .env
 
