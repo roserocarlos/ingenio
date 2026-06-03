@@ -308,6 +308,36 @@ html,body{height:100%;font-family:var(--f-b);font-weight:300;
   .detail-panel{width:calc(100vw - 24px);right:12px;top:10px}
   .health-widget{margin:8px 8px 0}
 }
+
+/* ═══ ACTUADOR / CONTROL RIEGO ═══ */
+.act-block{background:var(--dark2);border-radius:var(--r12);padding:12px 14px;margin-bottom:12px}
+.act-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-dark);margin-bottom:10px}
+.act-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.act-status{font-size:12px;color:var(--on-dark);flex:1;line-height:1.4}
+.act-status small{display:block;font-size:10px;color:var(--muted-dark);margin-top:2px}
+.btn-riego{
+  padding:8px 16px;border-radius:var(--pill);font-size:12px;font-weight:700;
+  border:none;cursor:pointer;transition:all .2s var(--ease);white-space:nowrap;
+  font-family:var(--f-b);letter-spacing:.02em;
+}
+.btn-riego.idle{background:var(--c4);color:#fff}
+.btn-riego.idle:hover{background:var(--c1);transform:scale(1.03)}
+.btn-riego.pending{background:var(--c8);color:var(--dark);cursor:wait}
+.btn-riego.active{background:#22c55e;color:#fff;cursor:default}
+.btn-riego.error{background:#ef4444;color:#fff}
+.btn-riego.off{background:rgba(255,255,255,.1);color:var(--muted-dark)}
+.act-timer{
+  font-family:var(--f-d);font-size:22px;font-weight:700;
+  color:#22c55e;text-align:center;margin-top:8px;display:none;
+}
+.act-duration{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.dur-btn{
+  padding:4px 10px;border-radius:var(--pill);font-size:11px;font-weight:600;
+  border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);
+  color:var(--muted-dark);cursor:pointer;transition:all .15s;
+}
+.dur-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.dur-btn.selected{background:var(--c4);color:#fff;border-color:var(--c4)}
 </style>
 </head>
 <body>
@@ -459,6 +489,15 @@ let histChart = null;
 let activeNode= null;
 let dataSource= 'demo';
 let alertCount= 0;
+
+// ── ESTADO ACTUADORES ─────────────────────────────────────────────────────────
+const actuadores = {}; // { nodeId: { state:'idle'|'pending'|'active'|'error', timer:null, remaining:0, duration:30 } }
+
+function getAct(nodeId) {
+  if (!actuadores[nodeId]) actuadores[nodeId] = {state:'idle', timer:null, remaining:0, duration:30};
+  return actuadores[nodeId];
+}
+
 let tendencias= {}; // cache de tendencias por nodeId
 
 // ── MAPA ──────────────────────────────────────────────────────────────────────
@@ -636,7 +675,7 @@ function addSensor(s) {
   renderList();
   updateBar();
   updateHealthScore();
-  
+  checkAlerts(s);
 }
 
 function getStatusText(s) {
@@ -866,6 +905,25 @@ function renderDetail(s) {
       <div class="dp-rec-lbl">Recomendación</div>
       <div class="dp-rec-txt">${s.recommendation}</div>
     </div>` : ''}
+
+    <div class="act-block" id="actBlock_${s.id}">
+      <div class="act-title">🚿 Control de riego</div>
+      <div class="act-row">
+        <div class="act-status" id="actStatus_${s.id}">
+          ${getActStatusText(s.id)}
+          <small id="actSub_${s.id}">${getActSubText(s.id)}</small>
+        </div>
+        <button class="btn-riego ${getActBtnClass(s.id)}" id="actBtn_${s.id}"
+          onclick="toggleRiego('${s.id}')">
+          ${getActBtnText(s.id)}
+        </button>
+      </div>
+      <div class="act-timer" id="actTimer_${s.id}">${getTimerStr(s.id)}</div>
+      <div class="act-duration" id="actDuration_${s.id}" style="${getAct(s.id).state==='idle'?'':'display:none'}">
+        ${[15,30,45,60].map(m=>`<button class="dur-btn${getAct(s.id).duration===m?' selected':''}"
+          onclick="setDuration('${s.id}',${m})">${m} min</button>`).join('')}
+      </div>
+    </div>
 
     <div class="chart-label">Humedad últimas 24h</div>
     <div class="chart-wrap"><canvas id="histChart"></canvas></div>
@@ -1099,6 +1157,18 @@ function connectMQTT() {
           const data=JSON.parse(payload.toString());
           addAlert(data.type||'warn', data.msg||data.message||'Alerta del sistema');
         }
+        // ACK de actuador
+        if (parts[3]==='ack') {
+          const nodeId=parts[2];
+          const data=JSON.parse(payload.toString());
+          if (data.status==='CONFIRMED' && data.action==='OPEN') {
+            confirmRiego(nodeId, data.duration_min || getAct(nodeId).duration);
+            addAlert('ok', `✅ Riego activado en ${nodeId} — ${data.duration_min||getAct(nodeId).duration} min`);
+          } else if (data.status==='CONFIRMED' && data.action==='CLOSE') {
+            const a=getAct(nodeId); a.state='idle';
+            updateActUI(nodeId);
+          }
+        }
       } catch {}
     });
   } catch {
@@ -1160,6 +1230,101 @@ function hideLoad() {
   const o=document.getElementById('loadOverlay');
   o.classList.add('hidden');
   setTimeout(()=>o.style.display='none',700);
+}
+
+
+// ── CONTROL ACTUADOR ─────────────────────────────────────────────────────────
+function getActStatusText(id) {
+  const a = getAct(id);
+  return {idle:'Listo para activar',pending:'Enviando comando...',
+    active:'Riego activo',error:'Sin respuesta del nodo',off:'Apagando...'}[a.state]||'—';
+}
+function getActSubText(id) {
+  const a = getAct(id);
+  if (a.state==='idle') return `Duración: ${a.duration} min`;
+  if (a.state==='active') return `${a.remaining} min restantes`;
+  return '';
+}
+function getActBtnClass(id) {
+  return {idle:'idle',pending:'pending',active:'off',error:'error'}[getAct(id).state]||'idle';
+}
+function getActBtnText(id) {
+  return {idle:'💧 Activar',pending:'⏳ Enviando...',active:'⏹ Apagar',error:'↺ Reintentar'}[getAct(id).state]||'💧 Activar';
+}
+function getTimerStr(id) {
+  const a = getAct(id);
+  if (a.state!=='active') return '';
+  const m = Math.floor(a.remaining); const s2 = Math.floor((a.remaining-m)*60);
+  return `${m}:${String(s2).padStart(2,'0')}`;
+}
+
+function setDuration(id, min) {
+  getAct(id).duration = min;
+  // Actualizar botones de duración
+  const durDiv = document.getElementById(`actDuration_${id}`);
+  if (durDiv) durDiv.querySelectorAll('.dur-btn').forEach(b => {
+    b.classList.toggle('selected', parseInt(b.textContent)===min);
+  });
+  const sub = document.getElementById(`actSub_${id}`);
+  if (sub) sub.textContent = `Duración: ${min} min`;
+}
+
+function toggleRiego(id) {
+  const a = getAct(id);
+  if (a.state==='pending') return;
+
+  if (a.state==='active') {
+    // Apagar
+    a.state = 'off';
+    if (a.timer) { clearInterval(a.timer); a.timer=null; }
+    if (mqClient) mqClient.publish(`ingenio/f01/${id}/cmd`,
+      JSON.stringify({action:'CLOSE',ts:Date.now()}));
+    setTimeout(()=>{ a.state='idle'; updateActUI(id); }, 1500);
+  } else {
+    // Activar
+    a.state = 'pending';
+    updateActUI(id);
+    if (mqClient) mqClient.publish(`ingenio/f01/${id}/cmd`,
+      JSON.stringify({action:'OPEN',duration_min:a.duration,ts:Date.now()}));
+    // Timeout 10s esperando ACK — en simulado el ACK llega de Node-RED
+    a._timeout = setTimeout(()=>{
+      if (a.state==='pending') { a.state='error'; updateActUI(id); }
+    }, 10000);
+  }
+}
+
+function confirmRiego(id, duration) {
+  const a = getAct(id);
+  if (a._timeout) { clearTimeout(a._timeout); a._timeout=null; }
+  a.state = 'active';
+  a.remaining = duration || a.duration;
+  updateActUI(id);
+  // Countdown cada minuto
+  a.timer = setInterval(()=>{
+    a.remaining -= 0.5;
+    if (a.remaining <= 0) {
+      clearInterval(a.timer); a.timer=null;
+      a.state='idle'; a.remaining=0;
+      addAlert('ok', `✅ Riego completado en ${id}`);
+    }
+    updateActUI(id);
+  }, 30000);
+}
+
+function updateActUI(id) {
+  const a = getAct(id);
+  const btn    = document.getElementById(`actBtn_${id}`);
+  const status = document.getElementById(`actStatus_${id}`);
+  const sub    = document.getElementById(`actSub_${id}`);
+  const timer  = document.getElementById(`actTimer_${id}`);
+  const durDiv = document.getElementById(`actDuration_${id}`);
+  if (!btn) return;
+  btn.className    = `btn-riego ${getActBtnClass(id)}`;
+  btn.textContent  = getActBtnText(id);
+  if (status) status.childNodes[0].textContent = getActStatusText(id);
+  if (sub)    sub.textContent = getActSubText(id);
+  if (timer)  { timer.style.display = a.state==='active'?'block':'none'; timer.textContent=getTimerStr(id); }
+  if (durDiv) durDiv.style.display = a.state==='idle'?'':'none';
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
