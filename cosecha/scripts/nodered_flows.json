@@ -1,0 +1,198 @@
+[
+    {
+        "id": "flow_ingenio",
+        "type": "tab",
+        "label": "Ingenio+ — EMQX → InfluxDB + Alertas",
+        "disabled": false
+    },
+    {
+        "id": "mqtt_in",
+        "type": "mqtt in",
+        "z": "flow_ingenio",
+        "name": "EMQX ingenio/#",
+        "topic": "ingenio/#",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "mqtt_broker",
+        "inputs": 0,
+        "x": 120,
+        "y": 100,
+        "wires": [
+            [
+                "fn_parse"
+            ]
+        ]
+    },
+    {
+        "id": "fn_parse",
+        "type": "function",
+        "z": "flow_ingenio",
+        "name": "Parsear payload sensor",
+        "func": "// Parsear topic: ingenio/{finca_id}/{node_id}/up\nconst parts = msg.topic.split('/');\nconst finca_id = parts[1];\nconst node_id  = parts[2];\nconst tipo     = parts[3];\n\nif (tipo !== 'up') return null;\n\nconst payload = msg.payload;\nconst ts = payload.ts ? payload.ts * 1000 : Date.now();\n\nmsg.payload = [\n  {\n    soil_moisture: payload.soil_moisture || payload.soilMoisture || 0,\n    temperature:   payload.temperature   || 0,\n    ph:            payload.ph            || payload.pH           || 0,\n    nitrogen:      payload.nitrogen      || 0,\n    phosphorus:    payload.phosphorus    || 0,\n    potassium:     payload.potassium     || 0,\n    battery:       payload.battery       || 0,\n    rssi:          payload.rssi          || 0,\n    time:          ts\n  },\n  {\n    finca_id: finca_id,\n    node_id:  node_id\n  }\n];\n\nmsg.measurement = 'sensor_data';\n\n// Pasar el payload original para evaluación de alertas\nmsg._raw = payload;\nmsg._finca = finca_id;\nmsg._node  = node_id;\n\nreturn msg;",
+        "outputs": 1,
+        "x": 340,
+        "y": 100,
+        "wires": [
+            [
+                "influx_out",
+                "fn_alertas",
+                "d656f26816031397"
+            ]
+        ]
+    },
+    {
+        "id": "influx_out",
+        "type": "influxdb out",
+        "z": "flow_ingenio",
+        "influxdb": "influx_server",
+        "name": "InfluxDB sensores",
+        "measurement": "sensor_data",
+        "precision": "ms",
+        "retentionPolicy": "",
+        "database": "sensores",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "agrosensor",
+        "bucket": "sensores",
+        "x": 580,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "fn_alertas",
+        "type": "function",
+        "z": "flow_ingenio",
+        "name": "Evaluar alertas",
+        "func": "const raw    = msg._raw || {};\nconst finca  = msg._finca || 'f01';\nconst nodeId = msg._node  || 's001';\nconst hum    = raw.soil_moisture || raw.soilMoisture;\nconst bat    = raw.battery;\n\n// Debounce — no repetir misma alerta en 5 min\nconst now = Date.now();\nif (!context.alertas) context.alertas = {};\nconst key = `${nodeId}_hum`;\nconst lastAlert = context.alertas[key] || 0;\nif (now - lastAlert < 300000) return null; // 5 minutos\n\nlet alerta = null;\n\nif (hum != null && hum < 25) {\n    alerta = {type:'crit', node:nodeId, field:'soil_moisture', value:hum,\n      msg:`🚨 Humedad crítica en ${nodeId} (${hum.toFixed(1)}%) — Regar urgente`};\n} else if (hum != null && hum < 40) {\n    alerta = {type:'warn', node:nodeId, field:'soil_moisture', value:hum,\n      msg:`💧 Humedad baja en ${nodeId} (${hum.toFixed(1)}%) — Regar hoy`};\n}\n\nif (bat != null && bat < 20) {\n    const keyBat = `${nodeId}_bat`;\n    const lastBat = context.alertas[keyBat] || 0;\n    if (now - lastBat > 300000) {\n        context.alertas[keyBat] = now;\n        alerta = {type:'crit', node:nodeId, field:'battery', value:bat,\n          msg:`🔋 Batería crítica en ${nodeId} (${bat.toFixed(0)}%) — Revisar panel solar`};\n    }\n}\n\nif (!alerta) return null;\n\ncontext.alertas[key] = now;\nmsg.topic   = `ingenio/${finca}/alertas`;\nmsg.payload = alerta;\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 140,
+        "wires": [
+            [
+                "mqtt_alertas_out",
+                "debug_alertas"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_alertas_out",
+        "type": "mqtt out",
+        "z": "flow_ingenio",
+        "name": "Publicar alerta EMQX",
+        "topic": "",
+        "qos": "0",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker",
+        "x": 820,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "debug_alertas",
+        "type": "debug",
+        "z": "flow_ingenio",
+        "name": "Debug alertas",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 820,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "comment_1",
+        "type": "comment",
+        "z": "flow_ingenio",
+        "name": "Ingenio+ — Flujo principal",
+        "info": "EMQX ingenio/# → parsear payload → InfluxDB + alertas automáticas\n\nAlertas:\n- Humedad < 25% → crítica\n- Humedad < 40% → advertencia\n- Batería < 20% → crítica\n- RSSI < -95 dBm → señal débil\n\nEl dashboard suscribe a ingenio/{finca}/alertas via MQTT WS",
+        "x": 160,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "f714e99e884a4509",
+        "type": "catch",
+        "z": "flow_ingenio",
+        "name": "",
+        "scope": null,
+        "uncaught": false,
+        "x": 380,
+        "y": 60,
+        "wires": [
+            [
+                "influx_out"
+            ]
+        ]
+    },
+    {
+        "id": "d656f26816031397",
+        "type": "debug",
+        "z": "flow_ingenio",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 540,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "mqtt_broker",
+        "type": "mqtt-broker",
+        "name": "EMQX Local",
+        "broker": "emqx",
+        "port": "1883",
+        "clientid": "nodered_ingenio",
+        "autoConnect": true,
+        "usetls": false,
+        "compatmode": false,
+        "protocolVersion": 4,
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthQos": "0",
+        "willQos": "0"
+    },
+    {
+        "id": "influx_server",
+        "type": "influxdb",
+        "hostname": "influxdb",
+        "port": "8086",
+        "protocol": "http",
+        "database": "sensores",
+        "name": "InfluxDB Local",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://influxdb:8086",
+        "timeout": "",
+        "rejectUnauthorized": false
+    },
+    {
+        "id": "27b46eef7fcc09b2",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]
